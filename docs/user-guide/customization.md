@@ -148,6 +148,30 @@ async def batched_custom_rm(args, samples: list[Sample]) -> list[float]:
 Prefixing any of them with `boxed_` (for example `boxed_math`) extracts `\boxed{}`
 from the response before grading.
 
+### Limit concurrent per-sample scoring
+
+Wrap an async per-sample scorer once in your recipe module:
+
+```python
+from miles.rollout import on_policy_distillation
+from miles.rollout.rm_hub.concurrency import async_reward
+
+reward_func = async_reward(on_policy_distillation.reward_func, concurrency=16)
+```
+
+Use `--custom-rm-path my_recipe.reward_func`; for OPD, continue using
+`--custom-reward-post-process-path miles.rollout.on_policy_distillation.post_process_rewards`.
+
+Single calls and batches share the wrapper's in-flight limit. Batch outputs
+keep input order; failure or cancellation cancels and awaits siblings before
+propagating the original exception. Args, kwargs, and results pass through
+unchanged. Create one wrapper per worker/event loop: the limit is not global
+across workers. This utility also supports Python 3.10.
+
+This is opt-in and does not change the default RM dispatch. Wrap only scorers
+that score samples independently, not group scorers that need the whole batch.
+The limit bounds scorer invocations, not nested requests a scorer makes itself.
+
 ### `--custom-reward-post-process-path`
 
 Hook to normalize rewards differently from the default GRPO normalization.
