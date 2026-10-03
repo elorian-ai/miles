@@ -62,34 +62,34 @@ async def test_concurrency_is_shared_across_batches_and_single_calls() -> None:
 
 
 @pytest.mark.asyncio
-async def test_batch_failure_cancels_siblings_and_releases_capacity() -> None:
+async def test_batch_failure_waits_for_peers_and_releases_capacity() -> None:
     started = asyncio.Event()
+    failed = asyncio.Event()
+    release = asyncio.Event()
     stopped = asyncio.Event()
-    never = asyncio.Event()
 
     async def score(args: argparse.Namespace, sample: miles_types.Sample) -> int:
         if sample.index == 0:
             await started.wait()
+            failed.set()
             raise RuntimeError("scoring failed")
         if sample.index == 1:
             started.set()
-            try:
-                await never.wait()
-            finally:
-                stopped.set()
+            await release.wait()
+            stopped.set()
         return sample.index
 
     hook = concurrency.async_reward(score, concurrency=2)
     args = argparse.Namespace()
+    task = asyncio.create_task(hook(args, [miles_types.Sample(index=0), miles_types.Sample(index=1)]))
+    await asyncio.wait_for(failed.wait(), timeout=1)
+    assert not task.done()
+    release.set()
     with pytest.raises(RuntimeError, match="scoring failed"):
-        await asyncio.wait_for(
-            hook(args, [miles_types.Sample(index=0), miles_types.Sample(index=1)]),
-            timeout=1,
-        )
+        await asyncio.wait_for(task, timeout=1)
     assert stopped.is_set()
     assert await asyncio.wait_for(
-        hook(args, [miles_types.Sample(index=2), miles_types.Sample(index=3)]),
-        timeout=1,
+        hook(args, [miles_types.Sample(index=2), miles_types.Sample(index=3)]), timeout=1
     ) == [2, 3]
 
 

@@ -163,8 +163,9 @@ Use `--custom-rm-path my_recipe.reward_func`; for OPD, continue using
 `--custom-reward-post-process-path miles.rollout.on_policy_distillation.post_process_rewards`.
 
 Single calls and batches share the wrapper's in-flight limit. Batch outputs
-keep input order; failure or cancellation cancels and awaits siblings before
-propagating the original exception. Args, kwargs, and results pass through
+keep input order and reuse `miles.utils.async_utils.gather_and_raise_first`: all
+calls settle before the first error is raised. External cancellation follows
+that helper's standard asyncio behavior and releases semaphore capacity. Args, kwargs, and results pass through
 unchanged. Create one wrapper per worker/event loop: the limit is not global
 across workers. This utility also supports Python 3.10.
 
